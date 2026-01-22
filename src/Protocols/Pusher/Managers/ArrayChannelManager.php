@@ -3,6 +3,7 @@
 namespace Laravel\Reverb\Protocols\Pusher\Managers;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Laravel\Reverb\Application;
 use Laravel\Reverb\Concerns\InteractsWithApplications;
 use Laravel\Reverb\Contracts\ApplicationProvider;
@@ -104,6 +105,11 @@ class ArrayChannelManager implements ChannelManagerInterface
     {
         foreach ($this->channels() as $channel) {
             $channel->unsubscribe($connection);
+
+            // Если это канал автомата
+            if ($channel->isAutomatChannel()) {
+                $this->sendOnlineAutomats();
+            }
         }
     }
 
@@ -151,5 +157,35 @@ class ArrayChannelManager implements ChannelManagerInterface
             ->each(function (Application $application) {
                 $this->applications[$application->id()] = [];
             });
+    }
+
+    /**
+     * Получение идентификаторов автоматов которые находятся в онлайне.
+     */
+    public function getOnlineAutomatsIDs(): array
+    {
+        return $onlineAutomats = collect($this->channels())
+            ->map(fn($channel) => $channel->name())
+            ->filter(fn($name) => Str::startsWith($name, 'automat.'))
+            ->map(fn($name) => (int) Str::after($name, 'automat.'))
+            ->sort()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Оповещение всех соединений онлайн канала.
+     */
+    public function sendOnlineAutomats(): void
+    {
+        foreach ($this->connections('online') as $connection) {
+            $connection->send(json_encode(
+                array_filter([
+                    'event' => 'automat.change',
+                    'data' => ['automats' => $this->getOnlineAutomatsIDs()],
+                    'channel' => 'online',
+                ])
+            ));
+        }
     }
 }

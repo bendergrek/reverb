@@ -3,6 +3,7 @@
 namespace Laravel\Reverb\Protocols\Pusher;
 
 use Exception;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Laravel\Reverb\Contracts\Connection;
@@ -38,6 +39,8 @@ class EventHandler
             'unsubscribe' => $this->unsubscribe($connection, $payload['channel']),
             'ping' => $this->pong($connection),
             'pong' => $connection->touch(),
+            'online' => $this->sendOnlineAutomats($connection),
+            'check' => $this->check($connection, $payload),
             default => throw new Exception('Unknown Pusher event: '.$event),
         };
     }
@@ -83,6 +86,11 @@ class EventHandler
     protected function afterSubscribe(Channel $channel, Connection $connection): void
     {
         $this->sendInternally($connection, 'subscription_succeeded', $channel->data(), $channel->name());
+
+        // Если это канал автомата
+        if ($channel->isAutomatChannel()) {
+            $this->channels->sendOnlineAutomats();
+        }
 
         match (true) {
             $channel instanceof CacheChannel => $this->sendCachedPayload($channel, $connection),
@@ -135,6 +143,21 @@ class EventHandler
             : static::send($connection, 'ping');
 
         $connection->ping();
+    }
+    public function sendOnlineAutomats(Connection $connection): void
+    {
+        $connection->send(
+            static::formatPayload('automat.change', ['automats' => $this->channels->getOnlineAutomatsIDs()], 'online', '')
+        );
+    }
+
+    public function check(Connection $connection, array $payload): void
+    {
+        $automatId = Arr::get($payload, 'id');
+
+        if ($automatId) {
+            static::send($connection, 'check', ['online' => $this->channels->exists('automat.'.$automatId)]);
+        }
     }
 
     /**

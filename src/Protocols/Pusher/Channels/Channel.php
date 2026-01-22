@@ -2,6 +2,7 @@
 
 namespace Laravel\Reverb\Protocols\Pusher\Channels;
 
+use Illuminate\Support\Str;
 use Laravel\Reverb\Contracts\Connection;
 use Laravel\Reverb\Loggers\Log;
 use Laravel\Reverb\Protocols\Pusher\Concerns\SerializesChannels;
@@ -143,5 +144,13 @@ class Channel
     public function data(): array
     {
         return [];
+    }
+
+    /**
+     * Является ли канал каналом автомата
+     */
+    public function isAutomatChannel(): bool
+    {
+        return Str::startsWith($this->name(), 'automat.');
     }
 }
